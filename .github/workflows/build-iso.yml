@@ -1,0 +1,36 @@
+name: Parrot OS ISO bauen
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Speicherplatz freimachen
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: actions/checkout@v4
+
+      - name: ISO bauen in Debian 13 (dauert 30-60 Minuten)
+        run: |
+          docker run --rm --privileged -v "$PWD":/work -w /work debian:trixie bash -c '
+            set -e
+            apt-get update
+            apt-get install -y live-build git ca-certificates xorriso squashfs-tools \
+              mtools dosfstools grub-pc-bin grub-efi-amd64-bin syslinux syslinux-common \
+              isolinux zstd rsync cpio gnupg curl xz-utils kmod fdisk
+            bash build.sh
+          '
+
+      - name: ISO hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParrotOS-ISO
+          path: parrotos.iso
+          compression-level: 0
+          retention-days: 14
