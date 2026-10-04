@@ -1,0 +1,45 @@
+#!/bin/bash
+# Stellt sicher, dass im Live-System der Benutzer "parrot" (Passwort "live")
+# existiert und automatisch angemeldet wird.
+set -u
+
+cat > /usr/local/sbin/parrot-live-setup <<'SCRIPT'
+#!/bin/bash
+id parrot >/dev/null 2>&1 || useradd -m -s /bin/bash parrot
+echo 'parrot:live' | chpasswd
+for g in sudo audio video plugdev netdev cdrom dialout; do
+  getent group "$g" >/dev/null 2>&1 && usermod -aG "$g" parrot
+done
+echo 'parrot ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/parrot-live
+chmod 440 /etc/sudoers.d/parrot-live
+mkdir -p /etc/lightdm/lightdm.conf.d
+cat > /etc/lightdm/lightdm.conf.d/50-parrot-live.conf <<'CONF'
+[Seat:*]
+autologin-user=parrot
+autologin-user-timeout=0
+autologin-session=xfce
+CONF
+exit 0
+SCRIPT
+chmod +x /usr/local/sbin/parrot-live-setup
+
+cat > /etc/systemd/system/parrot-live-setup.service <<'UNIT'
+[Unit]
+Description=Parrot OS Live-Benutzer einrichten
+After=live-config.service
+Before=display-manager.service lightdm.service
+ConditionKernelCommandLine=boot=live
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/parrot-live-setup
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+mkdir -p /etc/systemd/system/multi-user.target.wants
+ln -sf /etc/systemd/system/parrot-live-setup.service \
+  /etc/systemd/system/multi-user.target.wants/parrot-live-setup.service
+exit 0
