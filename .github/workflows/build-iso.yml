@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Speicherplatz freimachen
         run: |
@@ -26,6 +28,15 @@ jobs:
               isolinux zstd rsync cpio gnupg curl xz-utils kmod fdisk
             bash build.sh
           '
+
+      - name: Release erstellen (stabiler Download)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "iso-${{ github.run_number }}" parrotos.iso \
+            --title "Parrot OS ISO ${{ github.run_number }}" \
+            --notes "Fertiges Parrot OS ISO."
 
       - name: ISO hochladen
         uses: actions/upload-artifact@v4
