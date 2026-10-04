@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Parrot OS - Willkommens-App (GTK3). Gehört zum System, jederzeit anpassbar."""
+import os
+import subprocess
+import sys
+
+import gi
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk, Gdk
+
+OFF = os.path.expanduser("~/.config/parrot-welcome-off")
+LIVE = "boot=live" in open("/proc/cmdline").read()
+
+# Auf dem installierten System braucht man das Installer-Symbol nicht mehr
+if not LIVE:
+    try:
+        os.remove(os.path.expanduser("~/Desktop/install-parrotos.desktop"))
+    except OSError:
+        pass
+
+if os.path.exists(OFF) and "--force" not in sys.argv:
+    sys.exit(0)
+
+CSS = b"""
+window { background-color: #0b0d17; }
+label { color: #e6e9f5; }
+.title { font-size: 34px; font-weight: 800; color: #5ef2c0; }
+.sub { font-size: 14px; color: #9aa3c7; }
+button.card, button.accent { background-image: none; box-shadow: none; }
+button.card {
+  background-color: #151932; border: 1px solid #262c52;
+  border-radius: 14px; padding: 16px 10px; color: #e6e9f5;
+}
+button.card:hover { background-color: #1d2347; border-color: #5ef2c0; }
+button.card label { font-size: 15px; }
+button.accent {
+  background-color: #5ef2c0; border: none; border-radius: 14px;
+  padding: 14px; color: #06210f;
+}
+button.accent label { color: #06210f; font-size: 16px; font-weight: 700; }
+button.accent:hover { background-color: #8bffd8; }
+checkbutton label { color: #9aa3c7; }
+"""
+
+
+def start(cmd):
+    subprocess.Popen(cmd, shell=True, start_new_session=True)
+
+
+class Welcome(Gtk.Window):
+    def __init__(self):
+        super().__init__(title="Willkommen bei Parrot OS")
+        self.set_default_size(560, 620)
+        self.set_position(Gtk.WindowPosition.CENTER)
+        self.set_resizable(False)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        box.set_border_width(28)
+        self.add(box)
+
+        title = Gtk.Label(label="Parrot OS")
+        title.get_style_context().add_class("title")
+        box.pack_start(title, False, False, 0)
+        sub = Gtk.Label(label="Schön, dass du da bist. Was möchtest du tun?")
+        sub.get_style_context().add_class("sub")
+        box.pack_start(sub, False, False, 4)
+
+        if LIVE:
+            b = Gtk.Button(label="Parrot OS auf diesen Computer installieren")
+            b.get_style_context().add_class("accent")
+            b.connect("clicked", lambda _b: start("sudo -E calamares"))
+            box.pack_start(b, False, False, 6)
+            hint = Gtk.Label(label="Du testest gerade im Live-Modus. Es wird nichts verändert, "
+                                   "bis du installierst.")
+            hint.get_style_context().add_class("sub")
+            hint.set_line_wrap(True)
+            box.pack_start(hint, False, False, 0)
+
+        grid = Gtk.Grid(column_spacing=12, row_spacing=12, column_homogeneous=True)
+        items = [
+            ("🌐  Browser", "firefox-esr"),
+            ("📦  Software", "gnome-software"),
+            ("📁  Dateien", "thunar"),
+            ("💻  Terminal", "xfce4-terminal"),
+            ("⚙️  Einstellungen", "xfce4-settings-manager"),
+            ("📶  WLAN", "nm-connection-editor"),
+            ("🖼️  Hintergrund", "xfdesktop-settings"),
+            ("⬇️  Von GitHub", "parrot-github-gui"),
+        ]
+        for i, (label, cmd) in enumerate(items):
+            b = Gtk.Button(label=label)
+            b.get_style_context().add_class("card")
+            b.connect("clicked", lambda _b, c=cmd: start(c))
+            grid.attach(b, i % 2, i // 2, 1, 1)
+        box.pack_start(grid, True, True, 8)
+
+        self.check = Gtk.CheckButton(label="Dieses Fenster beim Start anzeigen")
+        self.check.set_active(True)
+        box.pack_start(self.check, False, False, 0)
+
+        self.connect("destroy", self.on_close)
+
+    def on_close(self, *_):
+        if not self.check.get_active():
+            os.makedirs(os.path.dirname(OFF), exist_ok=True)
+            open(OFF, "w").close()
+        Gtk.main_quit()
+
+
+prov = Gtk.CssProvider()
+prov.load_from_data(CSS)
+Gtk.StyleContext.add_provider_for_screen(
+    Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+win = Welcome()
+win.show_all()
+Gtk.main()

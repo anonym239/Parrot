@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Parrot OS installieren
+Comment=Parrot OS fest auf diesen Computer installieren
+Exec=sudo -E calamares
+Icon=system-software-install
+Terminal=false
+Categories=System;

@@ -1,0 +1,103 @@
+#!/bin/bash
+# Läuft im fertigen System-Image beim Bauen.
+set -u
+export DEBIAN_FRONTEND=noninteractive
+
+echo ">>> Optionale Pakete (Build bricht nicht ab, falls eins fehlt)"
+apt-get update || true
+for p in greybird-gtk-theme papirus-icon-theme plank fonts-firacode plymouth-label \
+         lxpolkit libfuse2t64 xdg-desktop-portal-gtk virtualbox-guest-x11 virtualbox-guest-utils; do
+  apt-get install -y --no-install-recommends "$p" || echo "Optional nicht verfügbar: $p"
+done
+dpkg -s libfuse2t64 >/dev/null 2>&1 || apt-get install -y --no-install-recommends libfuse2 || true
+
+SK=/etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml
+
+echo ">>> Themes: Fallback auf Adwaita, falls Greybird/Papirus fehlen"
+if [ ! -d /usr/share/themes/Greybird-dark ]; then
+  sed -i 's/Greybird-dark/Adwaita-dark/' $SK/xsettings.xml
+  sed -i 's/Adwaita-dark/Default/' $SK/xfwm4.xml
+  sed -i 's/Greybird-dark/Adwaita-dark/' /etc/lightdm/lightdm-gtk-greeter.conf
+fi
+if [ ! -d /usr/share/icons/Papirus-Dark ]; then
+  sed -i 's/Papirus-Dark/Adwaita/' $SK/xsettings.xml /etc/lightdm/lightdm-gtk-greeter.conf
+fi
+if ! fc-list | grep -qi "Fira Code"; then
+  sed -i 's/Fira Code 11/Monospace 11/' /etc/skel/.config/xfce4/terminal/terminalrc
+fi
+
+echo ">>> Desktop: Hintergrundbild + Desktop-Symbole (Maus-Auswahlrahmen)"
+WP=/usr/share/backgrounds/parrotos/wallpaper.png
+{
+  echo '<?xml version="1.0" encoding="UTF-8"?>'
+  echo '<channel name="xfce4-desktop" version="1.0">'
+  echo '  <property name="backdrop" type="empty">'
+  echo '    <property name="screen0" type="empty">'
+  for m in monitor0 monitorVirtual-1 monitorVirtual1 monitorVGA-1 monitoreDP-1 monitoreDP1 monitorLVDS-1 monitorHDMI-1 monitorDP-1; do
+    echo "      <property name=\"$m\" type=\"empty\">"
+    echo '        <property name="workspace0" type="empty">'
+    echo '          <property name="color-style" type="int" value="0"/>'
+    echo '          <property name="image-style" type="int" value="5"/>'
+    echo "          <property name=\"last-image\" type=\"string\" value=\"$WP\"/>"
+    echo '        </property>'
+    echo '      </property>'
+  done
+  echo '    </property>'
+  echo '  </property>'
+  echo '  <property name="desktop-icons" type="empty">'
+  echo '    <property name="style" type="int" value="2"/>'
+  echo '    <property name="file-icons" type="empty">'
+  echo '      <property name="show-home" type="bool" value="true"/>'
+  echo '      <property name="show-filesystem" type="bool" value="true"/>'
+  echo '      <property name="show-trash" type="bool" value="true"/>'
+  echo '      <property name="show-removable" type="bool" value="true"/>'
+  echo '    </property>'
+  echo '  </property>'
+  echo '</channel>'
+} > $SK/xfce4-desktop.xml
+
+echo ">>> Firefox: Startseite Google, uBlock Origin"
+mkdir -p /etc/firefox/policies
+cat > /etc/firefox/policies/policies.json <<'JSON'
+{
+  "policies": {
+    "Homepage": { "URL": "https://www.google.com", "StartPage": "homepage" },
+    "SearchEngines": { "Default": "Google" },
+    "DontCheckDefaultBrowser": true,
+    "DisableTelemetry": true,
+    "OverrideFirstRunPage": "",
+    "ExtensionSettings": {
+      "uBlock0@raymondhill.net": {
+        "installation_mode": "normal_installed",
+        "install_url": "https://addons.mozilla.org/firefox/downloads/latest/ublock-origin/latest.xpi"
+      }
+    }
+  }
+}
+JSON
+if [ ! -e /usr/lib/firefox-esr/distribution/policies.json ]; then
+  mkdir -p /usr/lib/firefox-esr/distribution 2>/dev/null && \
+    cp /etc/firefox/policies/policies.json /usr/lib/firefox-esr/distribution/policies.json || true
+fi
+
+echo ">>> Branding"
+if [ -f /etc/os-release ]; then
+  sed -i 's/^NAME=.*/NAME="Parrot OS"/; s/^PRETTY_NAME=.*/PRETTY_NAME="Parrot OS 0.3"/' /etc/os-release
+fi
+B=/usr/share/calamares/branding/debian/branding.desc
+if [ -f "$B" ]; then
+  sed -i -E 's/^(\s*(productName|shortProductName|versionedName|shortVersionedName|bootloaderEntryName)\s*:\s*).*/\1Parrot OS/' "$B"
+fi
+
+echo ">>> Boot-Animation (Plymouth)"
+plymouth-set-default-theme parrotos || true
+update-initramfs -u -k all || true
+
+echo ">>> Flathub (Software aus dem Internet)"
+flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo || true
+
+echo ">>> Rechte"
+chmod +x /usr/local/bin/parrot-* /etc/skel/Desktop/*.desktop 2>/dev/null || true
+update-desktop-database 2>/dev/null || true
+
+exit 0

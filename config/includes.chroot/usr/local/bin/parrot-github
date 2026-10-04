@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+"""parrot-github: Programme von GitHub installieren.
+Benutzung: parrot-github https://github.com/BESITZER/PROJEKT
+Nimmt zuerst die neueste Release-Datei (.deb oder .AppImage). Gibt es keine,
+wird das Projekt nach ~/GitHub geklont und (nach Rückfrage) gebaut."""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.request
+
+HOME = os.path.expanduser("~")
+UA = {"User-Agent": "parrot-github"}
+
+
+def get_json(url):
+    req = urllib.request.Request(url, headers={**UA, "Accept": "application/vnd.github+json"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+
+def download(url, dest):
+    req = urllib.request.Request(url, headers=UA)
+    with urllib.request.urlopen(req, timeout=300) as r, open(dest, "wb") as f:
+        shutil.copyfileobj(r, f)
+
+
+def ask(question):
+    try:
+        return input(question + " [j/N] ").strip().lower() in ("j", "ja", "y", "yes")
+    except EOFError:
+        return False
+
+
+def run(cmd, cwd=None):
+    print("$", " ".join(cmd))
+    return subprocess.run(cmd, cwd=cwd).returncode
+
+
+def fits_this_pc(name):
+    n = name.lower()
+    bad = ("arm64", "aarch64", "armhf", "armv7", "i386", "i686", "windows", "darwin",
+           "macos", "osx", ".exe", ".msi", ".dmg", "-win")
+    return not any(b in n for b in bad)
+
+
+def install_deb(asset):
+    dest = os.path.join(tempfile.mkdtemp(), asset["name"])
+    print("Lade", asset["name"], "…")
+    download(asset["browser_download_url"], dest)
+    return run(["sudo", "apt", "install", "-y", dest])
+
+
+def install_appimage(asset, repo):
+    os.makedirs(os.path.join(HOME, "Apps"), exist_ok=True)
+    dest = os.path.join(HOME, "Apps", asset["name"])
+    print("Lade", asset["name"], "…")
+    download(asset["browser_download_url"], dest)
+    os.chmod(dest, 0o755)
+    apps = os.path.join(HOME, ".local", "share", "applications")
+    os.makedirs(apps, exist_ok=True)
+    with open(os.path.join(apps, repo + ".desktop"), "w") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=%s\nExec=%s\n"
+                "Icon=application-x-executable\nTerminal=false\nCategories=Utility;\n" % (repo, dest))
+    print("Installiert. Du findest '%s' jetzt im Programm-Menü." % repo)
+    return 0
+
+
+def clone_and_build(owner, repo):
+    base = os.path.join(HOME, "GitHub")
+    os.makedirs(base, exist_ok=True)
+    target = os.path.join(base, repo)
+    if os.path.isdir(target):
+        run(["git", "-C", target, "pull"])
+    else:
+        if run(["git", "clone", "--depth", "1", "https://github.com/%s/%s.git" % (owner, repo), target]) != 0:
+            return 1
+    print("\nProjekt liegt in:", target)
+    has = lambda f: os.path.exists(os.path.join(target, f))
+    if has("package.json") and ask("Node.js-Projekt gefunden. 'npm install' ausführen?"):
+        run(["npm", "install"], cwd=target)
+    elif has("requirements.txt") and ask("Python-Projekt gefunden. Umgebung anlegen und Pakete installieren?"):
+        run([sys.executable, "-m", "venv", ".venv"], cwd=target)
+        run([os.path.join(target, ".venv", "bin", "pip"), "install", "-r", "requirements.txt"], cwd=target)
+        print("Starten mit: source .venv/bin/activate")
+    elif has("CMakeLists.txt") and ask("CMake-Projekt gefunden. Jetzt bauen?"):
+        run(["cmake", "-B", "build"], cwd=target)
+        run(["cmake", "--build", "build"], cwd=target)
+    elif has("Makefile") and ask("Makefile gefunden. 'make' ausführen?"):
+        run(["make"], cwd=target)
+    else:
+        print("Lies die README im Projektordner für die genauen Schritte.")
+    return 0
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("Benutzung: parrot-github https://github.com/BESITZER/PROJEKT")
+        return 1
+    m = re.search(r"github\.com[/:]([^/\s]+)/([^/\s#?]+)", sys.argv[1])
+    if not m:
+        print("Das ist kein GitHub-Link.")
+        return 1
+    owner, repo = m.group(1), re.sub(r"\.git$", "", m.group(2))
+    print("Hinweis: Installiere nur Programme aus Quellen, denen du vertraust.\n")
+    assets = []
+    try:
+        rel = get_json("https://api.github.com/repos/%s/%s/releases/latest" % (owner, repo))
+        assets = [a for a in rel.get("assets", []) if fits_this_pc(a["name"])]
+    except Exception as e:
+        print("Keine Release-Dateien gefunden (%s)." % e)
+    debs = [a for a in assets if a["name"].lower().endswith(".deb")]
+    apps = [a for a in assets if a["name"].lower().endswith(".appimage")]
+    if debs:
+        return install_deb(debs[0])
+    if apps:
+        return install_appimage(apps[0], repo)
+    return clone_and_build(owner, repo)
+
+
+if __name__ == "__main__":
+    code = main()
+    sys.exit(code)

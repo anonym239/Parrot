@@ -1,0 +1,2 @@
+Kernel-Labor: Mini-Betriebssystem komplett von Hand geschrieben (ohne Linux).
+Zum Lernen und Experimentieren. Bauen auf Linux mit: make   (siehe Abschnitt 8 in ../README.md)

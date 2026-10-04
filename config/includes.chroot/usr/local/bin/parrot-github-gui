@@ -1,0 +1,4 @@
+#!/bin/bash
+URL=$(zenity --entry --title="Von GitHub installieren" --width=460 \
+      --text="GitHub-Link einfügen (z.B. https://github.com/BESITZER/PROJEKT):") || exit 0
+[ -n "$URL" ] && exec xfce4-terminal --hold --title="GitHub-Installer" -x parrot-github "$URL"

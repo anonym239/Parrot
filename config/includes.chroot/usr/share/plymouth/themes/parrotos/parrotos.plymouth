@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Parrot OS
+Description=Parrot OS Boot-Animation
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/parrotos
+ScriptFile=/usr/share/plymouth/themes/parrotos/parrotos.script

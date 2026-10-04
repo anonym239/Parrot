@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Von GitHub installieren
+Comment=Programme von GitHub herunterladen und installieren
+Exec=parrot-github-gui
+Icon=emblem-downloads
+Terminal=false
+Categories=System;Utility;
